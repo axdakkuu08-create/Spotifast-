@@ -50,6 +50,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.Tab
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,13 +71,15 @@ import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 
-data class LocalTrack(val id: Long, val title: String, val artist: String, val uri: Uri)
+data class LocalTrack(val id: Long, val title: String, val artist: String, val album: String, val uri: Uri)
 
 private val NeonGreen = Color(0xFFB7FF3C)
 private val NeonPurple = Color(0xFF9B7BFF)
 private val AppBackground = Color(0xFF090B10)
 private val PanelBackground = Color(0xFF151923)
 private val MutedText = Color(0xFF9AA3B5)
+
+private enum class LibraryTab(val label: String) { Songs("Songs"), Albums("Albums"), Artists("Artists"), Playlists("Playlists") }
 
 class MainActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
@@ -112,7 +116,8 @@ class MainActivity : ComponentActivity() {
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST
+            MediaStore.Audio.Media.ARTIST,
+            MediaStore.Audio.Media.ALBUM
         )
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         contentResolver.query(
@@ -122,11 +127,13 @@ class MainActivity : ComponentActivity() {
             val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
             val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
             val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+            val albumCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
                 val title = cursor.getString(titleCol) ?: "Unknown title"
                 val artist = cursor.getString(artistCol) ?: "Unknown artist"
-                tracks += LocalTrack(id, title, artist, ContentUris.withAppendedId(collection, id))
+                val album = cursor.getString(albumCol)?.takeUnless { it == "<unknown>" } ?: "Unknown album"
+                tracks += LocalTrack(id, title, artist, album, ContentUris.withAppendedId(collection, id))
             }
         }
         return tracks
@@ -166,6 +173,7 @@ private fun SpotifastScreen(
     var searchQuery by remember { mutableStateOf("") }
     var favorites by remember { mutableStateOf(setOf<Long>()) }
     var showFavorites by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(LibraryTab.Songs) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val permission = if (Build.VERSION.SDK_INT >= 33) {
@@ -186,10 +194,17 @@ private fun SpotifastScreen(
         if (permissionGranted) tracks = tracksProvider()
     }
 
-    val visibleTracks = tracks.filter { track ->
+    val matchingTracks = tracks.filter { track ->
         val matchesSearch = track.title.contains(searchQuery, ignoreCase = true) ||
-            track.artist.contains(searchQuery, ignoreCase = true)
+            track.artist.contains(searchQuery, ignoreCase = true) ||
+            track.album.contains(searchQuery, ignoreCase = true)
         matchesSearch && (!showFavorites || favorites.contains(track.id))
+    }
+    val visibleTracks = when (selectedTab) {
+        LibraryTab.Songs -> matchingTracks
+        LibraryTab.Albums -> matchingTracks.distinctBy { it.album }
+        LibraryTab.Artists -> matchingTracks.distinctBy { it.artist }
+        LibraryTab.Playlists -> matchingTracks
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = AppBackground) {
@@ -313,7 +328,15 @@ private fun SpotifastScreen(
                     Text("${tracks.size} LOCAL TRACKS", color = MutedText, style = MaterialTheme.typography.labelSmall, letterSpacing = 1.sp)
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            ScrollableTabRow(selectedTabIndex = selectedTab.ordinal, containerColor = AppBackground, contentColor = NeonGreen, edgePadding = 0.dp) {
+                LibraryTab.values().forEach { tab ->
+                    Tab(selected = selectedTab == tab, onClick = {
+                        selectedTab = tab
+                        showFavorites = tab == LibraryTab.Playlists
+                    }, text = { Text(tab.label) })
+                }
+            }
+            Spacer(Modifier.height(8.dp))
 
             OutlinedTextField(
                 value = searchQuery,
