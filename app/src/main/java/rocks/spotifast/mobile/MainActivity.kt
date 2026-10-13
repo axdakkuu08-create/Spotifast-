@@ -146,6 +146,7 @@ private fun SpotifastScreen(
     var selected by remember { mutableStateOf<LocalTrack?>(null) }
     var permissionGranted by remember { mutableStateOf(false) }
     var playing by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val permission = if (Build.VERSION.SDK_INT >= 33) {
         Manifest.permission.READ_MEDIA_AUDIO
@@ -161,7 +162,7 @@ private fun SpotifastScreen(
 
     LaunchedEffect(Unit) {
         permissionGranted = ContextCompat.checkSelfPermission(
-            androidx.compose.ui.platform.LocalContext.current,
+            context,
             permission
         ) == PackageManager.PERMISSION_GRANTED
         if (permissionGranted) tracks = tracksProvider()
