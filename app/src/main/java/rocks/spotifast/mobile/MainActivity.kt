@@ -49,6 +49,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.Tab
 import androidx.compose.material3.ScrollableTabRow
@@ -57,6 +61,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -69,7 +75,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import kotlinx.coroutines.delay
 
 data class LocalTrack(val id: Long, val title: String, val artist: String, val album: String, val uri: Uri)
 
@@ -91,9 +99,12 @@ class MainActivity : ComponentActivity() {
             SpotifastTheme {
                 SpotifastScreen(
                     tracksProvider = { loadTracks() },
+                    player = player!!,
                     onPlay = { track ->
                         val p = player ?: return@SpotifastScreen
-                        p.setMediaItem(MediaItem.fromUri(track.uri))
+                        val queue = loadTracks()
+                        val startIndex = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+                        p.setMediaItems(queue.map { MediaItem.Builder().setMediaId(it.id.toString()).setUri(it.uri).build() }, startIndex, 0L)
                         p.prepare()
                         p.play()
                     },
@@ -163,6 +174,7 @@ private fun SpotifastTheme(content: @Composable () -> Unit) {
 @Composable
 private fun SpotifastScreen(
     tracksProvider: () -> List<LocalTrack>,
+    player: ExoPlayer,
     onPlay: (LocalTrack) -> Unit,
     onToggle: () -> Unit
 ) {
@@ -174,6 +186,11 @@ private fun SpotifastScreen(
     var favorites by remember { mutableStateOf(setOf<Long>()) }
     var showFavorites by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(LibraryTab.Songs) }
+    var expandedPlayer by remember { mutableStateOf(false) }
+    var position by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var shuffleEnabled by remember { mutableStateOf(false) }
+    var repeatMode by remember { mutableIntStateOf(0) }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     val permission = if (Build.VERSION.SDK_INT >= 33) {
@@ -200,6 +217,14 @@ private fun SpotifastScreen(
             track.album.contains(searchQuery, ignoreCase = true)
         matchesSearch && (!showFavorites || favorites.contains(track.id))
     }
+    LaunchedEffect(playing, selected?.id) {
+        while (true) {
+            position = player.currentPosition.coerceAtLeast(0L)
+            duration = player.duration.coerceAtLeast(0L)
+            delay(500)
+        }
+    }
+
     val visibleTracks = when (selectedTab) {
         LibraryTab.Songs -> matchingTracks
         LibraryTab.Albums -> matchingTracks.distinctBy { it.album }
@@ -470,6 +495,61 @@ private fun SpotifastScreen(
                         }
                     }
                     item { Spacer(Modifier.height(8.dp)) }
+                }
+            }
+
+            if (selected != null) {
+                Column(
+                    Modifier.fillMaxWidth().background(Color(0xFF11151D)).clickable { expandedPlayer = true }
+                ) {
+                    Box(Modifier.fillMaxWidth().height(2.dp).background(Color(0xFF303746))) {
+                        Box(Modifier.fillMaxWidth(if (duration > 0L) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f).height(2.dp).background(NeonGreen))
+                    }
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Album, contentDescription = null, tint = NeonPurple, modifier = Modifier.size(34.dp))
+                        Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                            Text(selected!!.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.SemiBold)
+                            Text(selected!!.artist, color = MutedText, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                        }
+                        IconButton(onClick = { onToggle(); playing = !playing }) {
+                            Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = "Play or pause", tint = NeonGreen)
+                        }
+                        IconButton(onClick = { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }) {
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (expandedPlayer) {
+        ModalBottomSheet(onDismissRequest = { expandedPlayer = false }, containerColor = PanelBackground) {
+            selected?.let { track ->
+                Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Spacer(Modifier.height(20.dp))
+                    Box(Modifier.size(220.dp).background(Brush.linearGradient(listOf(NeonPurple, NeonGreen.copy(alpha = .55f), PanelBackground)), RoundedCornerShape(28.dp)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Album, contentDescription = null, tint = Color.White, modifier = Modifier.size(94.dp))
+                    }
+                    Spacer(Modifier.height(22.dp))
+                    Text(track.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track.artist + " • " + track.album, color = MutedText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(18.dp))
+                    Slider(value = if (duration > 0L) position.toFloat().coerceIn(0f, duration.toFloat()) else 0f, onValueChange = { position = it.toLong() }, onValueChangeFinished = { player.seekTo(position) }, valueRange = 0f..duration.coerceAtLeast(1L).toFloat(), colors = SliderDefaults.colors(thumbColor = NeonGreen, activeTrackColor = NeonGreen))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(formatTime(position), color = MutedText, style = MaterialTheme.typography.labelSmall)
+                        Text(formatTime(duration), color = MutedText, style = MaterialTheme.typography.labelSmall)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { shuffleEnabled = !shuffleEnabled; player.shuffleModeEnabled = shuffleEnabled }) { Icon(Icons.Default.Shuffle, "Shuffle", tint = if (shuffleEnabled) NeonGreen else MutedText) }
+                        IconButton(onClick = { if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem() }) { Icon(Icons.Default.SkipPrevious, "Previous", modifier = Modifier.size(34.dp)) }
+                        IconButton(onClick = { onToggle(); playing = !playing }, modifier = Modifier.size(64.dp).background(NeonGreen, CircleShape)) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play or pause", tint = Color(0xFF11150A), modifier = Modifier.size(38.dp)) }
+                        IconButton(onClick = { if (player.hasNextMediaItem()) player.seekToNextMediaItem() }) { Icon(Icons.Default.SkipNext, "Next", modifier = Modifier.size(34.dp)) }
+                        IconButton(onClick = { repeatMode = (repeatMode + 1) % 3; player.repeatMode = when (repeatMode) { 1 -> Player.REPEAT_MODE_ONE; 2 -> Player.REPEAT_MODE_ALL; else -> Player.REPEAT_MODE_OFF } }) { Icon(Icons.Default.Repeat, "Repeat", tint = if (repeatMode == 0) MutedText else NeonGreen) }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(onClick = { expandedPlayer = false }) { Icon(Icons.Default.QueueMusic, null); Spacer(Modifier.width(8.dp)); Text("Queue is the device library order") }
                 }
             }
         }
