@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.SkipNext
@@ -60,6 +61,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.Tab
 import androidx.compose.material3.ScrollableTabRow
@@ -194,6 +197,9 @@ private fun SpotifastScreen(
     var showFavorites by remember { mutableStateOf(false) }
     var selectedTab by remember { mutableStateOf(LibraryTab.Songs) }
     var expandedPlayer by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
+    var sleepMinutes by remember { mutableIntStateOf(0) }
+    var volume by remember { mutableFloatStateOf(player.volume) }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var shuffleEnabled by remember { mutableStateOf(false) }
@@ -224,6 +230,15 @@ private fun SpotifastScreen(
             track.album.contains(searchQuery, ignoreCase = true)
         matchesSearch && (!showFavorites || favorites.contains(track.id))
     }
+    LaunchedEffect(sleepMinutes) {
+        if (sleepMinutes > 0) {
+            delay(sleepMinutes * 60_000L)
+            player.pause()
+            playing = false
+            sleepMinutes = 0
+        }
+    }
+
     LaunchedEffect(playing, selected?.id) {
         while (true) {
             position = player.currentPosition.coerceAtLeast(0L)
@@ -265,6 +280,9 @@ private fun SpotifastScreen(
                     if (permissionGranted) tracks = tracksProvider() else permissionLauncher.launch(permission)
                 }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh library", tint = NeonGreen)
+                }
+                IconButton(onClick = { showSettings = true }) {
+                    Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MutedText)
                 }
             }
 
