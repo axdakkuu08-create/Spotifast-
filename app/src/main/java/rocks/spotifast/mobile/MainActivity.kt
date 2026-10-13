@@ -579,6 +579,29 @@ private fun SpotifastScreen(
             }
         }
     }
+
+    if (showSettings) {
+        AlertDialog(
+            onDismissRequest = { showSettings = false },
+            title = { Text("Player settings") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Volume: ${(volume * 100).toInt()}%", fontWeight = FontWeight.SemiBold)
+                    Slider(value = volume, onValueChange = { volume = it; player.volume = it })
+                    Text("Sleep timer", fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(0, 15, 30, 60).forEach { minutes ->
+                            FilterChip(selected = sleepMinutes == minutes, onClick = { sleepMinutes = minutes }, label = { Text(if (minutes == 0) "Off" else "${minutes} min") })
+                        }
+                    }
+                    Text("Storage: local device music · offline playback", color = MutedText, style = MaterialTheme.typography.bodySmall)
+                    Text("Equalizer: device-specific audio effects are not connected yet.", color = MutedText, style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSettings = false }) { Text("Done") } }
+        )
+    }
+
 }
 
 private fun formatTime(ms: Long): String {
