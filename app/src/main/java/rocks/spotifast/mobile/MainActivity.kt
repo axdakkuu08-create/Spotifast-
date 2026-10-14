@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -201,6 +202,7 @@ private fun SpotifastScreen(
     var selectedTab by remember { mutableStateOf(LibraryTab.Songs) }
     var expandedPlayer by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showVideoLibrary by remember { mutableStateOf(false) }
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var volume by remember { mutableFloatStateOf(player.volume) }
     var position by remember { mutableLongStateOf(0L) }
@@ -257,7 +259,9 @@ private fun SpotifastScreen(
         LibraryTab.Playlists -> matchingTracks
     }
 
-    Surface(modifier = Modifier.fillMaxSize(), color = AppBackground) {
+    if (showVideoLibrary) {
+        VideoLibraryScreen(onBack = { showVideoLibrary = false })
+    } else Surface(modifier = Modifier.fillMaxSize(), color = AppBackground) {
         Column(
             modifier = Modifier.fillMaxSize().padding(horizontal = 18.dp),
             verticalArrangement = Arrangement.Top
@@ -283,6 +287,9 @@ private fun SpotifastScreen(
                     if (permissionGranted) tracks = tracksProvider() else permissionLauncher.launch(permission)
                 }) {
                     Icon(Icons.Default.Refresh, contentDescription = "Refresh library", tint = NeonGreen)
+                }
+                IconButton(onClick = { showVideoLibrary = true }) {
+                    Icon(Icons.Default.VideoLibrary, contentDescription = "Open video library", tint = NeonPurple)
                 }
                 IconButton(onClick = { showSettings = true }) {
                     Icon(Icons.Default.Settings, contentDescription = "Settings", tint = MutedText)
